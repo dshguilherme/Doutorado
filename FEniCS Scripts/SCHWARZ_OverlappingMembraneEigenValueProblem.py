@@ -43,6 +43,7 @@ omega1_markers.set_all(9999)
 bc_D1 = DirichletBoundaryOmega1()
 bc_D1.mark(omega1_markers, 0)
 
+
  # Omega 2
 class DirichletBoundaryOmega2(SubDomain):
     def inside(self,x,on_boundary):
@@ -139,26 +140,50 @@ r2, c2, rx2, cx2 = omega2solver.get_eigenpair(0)
 print("Omega 2 Frequency: ", sqrt(r2))
 
 # Writing Paraviews of the Initial Solution
-u = Function(V)
-u.vector()[:] = rx
+uu = Function(V)
+uu.vector()[:] = rx
 
-u1 = Function(V1)
-u1.vector()[:] = rx1
+uu1 = Function(V1)
+uu1.vector()[:] = rx1
 
-u2 = Function(V2)
-u2.vector()[:] = rx2
+uu2 = Function(V2)
+uu2.vector()[:] = rx2
 
-plot(u)
+plot(uu)
 vtkfile = File('SchwarzMembraneEigenvalueProblem/omega.pvd')
-vtkfile << u
+vtkfile << uu
 
-plot(u1)
+plot(uu1)
 vtkfile = File('SchwarzMembraneEigenvalueProblem/omega1.pvd')
-vtkfile << u1
+vtkfile << uu1
 
-plot(u2)
+plot(uu2)
 vtkfile = File('SchwarzMembraneEigenvalueProblem/omega2.pvd')
-vtkfile << u2
+vtkfile << uu2
 
-## Schwarz Loops
+## Schwarz Alternating Algorithm
 
+ # Bilinear Forms
+def kl(domain, ul, v, fl, gl):
+    n = FacetNormal(domain)
+    return inner(grad(ul),grad(v))*dx -((1-gl)*(Dx(ul,0)*n[0] +Dx(ul,1)*n[1])*v*ds(1)) +fl*ul*v*ds(1)
+
+ # Algorithm
+# First step on Omega 1
+n = FacetNormal(omega2)
+f = Dx(u2,0)*n[0] +Dx(u2,1)*n[1]
+g = u2
+#k1 = kl(omega1, u1, v, f, g)
+assemble(k1, tensor=K1)
+bcs1.apply(K1)
+r1, c1, rx1, cx1 = omega1solver.get_eigenpair(0)
+print("First Iteration Frequency: ", sqrt(r1))
+# Second step on Omega 2
+n = FacetNormal(omega1)
+f = Dx(u1,0)*n[0] +Dx(u1,1)*n[1]
+g = u1
+#k2 = kl(omega2, u2, v, f, g)
+assemble(k2, tensor=K2)
+bcs2.apply(K2)
+r2, c2, rx2, cx2 = omega2solver.get_eigenpair(0)
+print("Second Iteration Frequency: ", sqrt(r2))
