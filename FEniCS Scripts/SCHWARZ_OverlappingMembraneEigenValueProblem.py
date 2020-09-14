@@ -1,6 +1,7 @@
 from fenics import *
 from dolfin import *
 from petsc4py import PETSc
+from matplotlib import pyplot as plt
 
 ## Geometries and Meshes Definition
 nx = 24
@@ -41,8 +42,9 @@ class RobinBoundaryOmega1(SubDomain):
 omega1_markers = MeshFunction('size_t', omega1, omega1.topology().dim()-1,0)
 omega1_markers.set_all(9999)
 bc_D1 = DirichletBoundaryOmega1()
+bc_R1 = RobinBoundaryOmega1()
 bc_D1.mark(omega1_markers, 0)
-
+bc_R1.mark(omega1_markers, 1)
 
  # Omega 2
 class DirichletBoundaryOmega2(SubDomain):
@@ -56,6 +58,8 @@ omega2_markers = MeshFunction('size_t', omega2, omega2.topology().dim()-1,0)
 omega2_markers.set_all(9999)
 bc_D2 = DirichletBoundaryOmega2()
 bc_D2.mark(omega2_markers, 0)
+bc_R2 = RobinBoundaryOmega2()
+bc_R2.mark(omega2_markers, 1)
 
 ## Assemblies
 
@@ -135,8 +139,8 @@ print("Target Frequency: ", sqrt(r))
 
 r1, c1, rx1, cx1 = omega1solver.get_eigenpair(0)
 print("Omega 1 Frequency: ", sqrt(r1))
-
 r2, c2, rx2, cx2 = omega2solver.get_eigenpair(0)
+
 print("Omega 2 Frequency: ", sqrt(r2))
 
 # Writing Paraviews of the Initial Solution
@@ -161,29 +165,50 @@ plot(uu2)
 vtkfile = File('SchwarzMembraneEigenvalueProblem/omega2.pvd')
 vtkfile << uu2
 
+
 ## Schwarz Alternating Algorithm
+# First Step: Do F1 = du2/dn2 G1 = u2
+W2 = VectorFunctionSpace(omega2, 'P', V2.ufl_element().degree())
+grad_u2 = project(grad(uu2), W2)
+print(grad_u2(0.8,0.8)[0], grad_u2(0.8,0.8)[1])
+print(uu2(0.8,0.8))
 
- # Bilinear Forms
-def kl(domain, ul, v, fl, gl):
-    n = FacetNormal(domain)
-    return inner(grad(ul),grad(v))*dx -((1-gl)*(Dx(ul,0)*n[0] +Dx(ul,1)*n[1])*v*ds(1)) +fl*ul*v*ds(1)
+u1 = TrialFunction(V1)
+v1 = TestFunction(V1)
 
- # Algorithm
-# First step on Omega 1
-n = FacetNormal(omega2)
-f = Dx(u2,0)*n[0] +Dx(u2,1)*n[1]
-g = u2
-#k1 = kl(omega1, u1, v, f, g)
-assemble(k1, tensor=K1)
-bcs1.apply(K1)
-r1, c1, rx1, cx1 = omega1solver.get_eigenpair(0)
-print("First Iteration Frequency: ", sqrt(r1))
-# Second step on Omega 2
+dx = Measure('dx', domain = omega1)
+ds = Measure('ds', subdomain_data = omega1_markers)
+
+class OmegaF1(UserExpression):
+    def eval(self, value, x):
+        f = grad_u2(x[0], x[1])
+        value[0] = f[0]
+        value[1] = f[1]
+class OmegaG1(UserExpression):
+    def eval(self, value, x):
+        g = uu2(x[0], x[1])
+        value[0] = g[0]
+
+f1 = OmegaF1()
+g1 = OmegaG1()
 n = FacetNormal(omega1)
-f = Dx(u1,0)*n[0] +Dx(u1,1)*n[1]
-g = u1
-#k2 = kl(omega2, u2, v, f, g)
-assemble(k2, tensor=K2)
-bcs2.apply(K2)
-r2, c2, rx2, cx2 = omega2solver.get_eigenpair(0)
-print("Second Iteration Frequency: ", sqrt(r2))
+
+ak1 = inner(grad(u1),grad(v1))*dx -(1-g1)*inner(grad(u1),n)*v1*ds(1) -f1[0]*u1*v1*ds(1) -f1[1]*u1*v1*ds(1)
+am1 = u1*v1*dx
+
+K1 = PETScMatrix()
+bcs1 = DirichletBC(V1, 0.0, bc_D1)
+bcs1.apply(K1)
+assemble(ak1, tensor=K1)
+M1 = PETScMatrix()
+assemble(am1, tensor=M1)
+
+omega1solver = SLEPcEigenSolver(K1,M1)
+omega1solver.parameters['spectrum'] = "smallest magnitude"
+omega1solver.parameters['tolerance'] = 1e-6
+omega1solver.parameters['problem_type'] = "pos_gen_non_hermitian"
+omega1solver.solve(1)
+r1, c1, rx1, cx1 = omega1solver.get_eigenpair(0)
+print("First Iteration Omega 1 Frequency: ", sqrt(r1))
+
+        
