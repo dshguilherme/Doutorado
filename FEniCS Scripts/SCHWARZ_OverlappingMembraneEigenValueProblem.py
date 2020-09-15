@@ -6,6 +6,7 @@ from matplotlib import pyplot as plt
 ## Geometries and Meshes Definition
 nx = 24
 ny = 24
+MAX_ITER = 10 # Number of maximum iterations of the algorithm
 
 omega = RectangleMesh(Point(0.0,0.0), Point(1.5,1),nx,ny, "right/left") # Whole domain
 
@@ -168,11 +169,8 @@ vtkfile << uu2
 
 ## Schwarz Alternating Algorithm
 iteration = 0
-while (iteration < 11):
+while (iteration <= MAX_ITER):
     # First Step: Do F1 = du2/dn2 G1 = u2
-    V1 = FunctionSpace(omega1,"Lagrange", 1)
-    V2 = FunctionSpace(omega2, "Lagrange",1)
-
     g1 = Function(V1)
     LagrangeInterpolator.interpolate(uu2,g1)
     f1 = Function(V1)
@@ -186,7 +184,7 @@ while (iteration < 11):
     ## Solve for u1
     dx = Measure('dx', domain = omega1)
     ds = Measure('ds', subdomain_data = omega1_markers)
-    ak1 = inner(grad(u1),grad(v1))*dx -(1-g1)*(u1.dx(0) +u1.dx(1))*v1*ds(1) -f1*u1*v1*ds(1)
+    ak1 = inner(grad(u1),grad(v1))*dx -(1-g1)*(u1.dx(0) +u1.dx(1))*v1*ds(1) +f1*u1*v1*ds(1)
     am1 = u1*v1*dx
 
     K1 = PETScMatrix()
@@ -208,11 +206,10 @@ while (iteration < 11):
     uu1 = Function(V1)
     uu1.vector()[:] = rx1
     plot(uu1)
-    vtkfile1 = File('SchwarzMembraneEigenvalueProblem/omega1_iter1.pvd')
+    vtkfile1 = File('SchwarzMembraneEigenvalueProblem/omega1_iter' +str(iteration)+'.pvd')
     vtkfile1 << uu1
 
     ## Do F1 = du1/dn1 G2 = u1
-
     g2 = Function(V2)
     LagrangeInterpolator.interpolate(uu1,g2)
     f2 = Function(V2)
@@ -248,5 +245,5 @@ while (iteration < 11):
     uu2 = Function(V2)
     uu2.vector()[:] = rx2
     plot(uu2)
-    vtkfile1 = File('SchwarzMembraneEigenvalueProblem/omega2_iter1.pvd')
+    vtkfile1 = File('SchwarzMembraneEigenvalueProblem/omega2_iter'+str(iteration)+'.pvd')
     vtkfile1 << uu2

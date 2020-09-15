@@ -1,2 +1,6 @@
 *.vtu
 *.pvd
+*.cpp
+*.sh
+*.log
+*.pdf
