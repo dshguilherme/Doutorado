@@ -8,7 +8,7 @@ The strategy of this approach will be:
 from numpy import isclose
 from dolfin import *
 from multiphenics import *
-
+import mshr
 
 
 # MESHES #
@@ -22,10 +22,10 @@ ny = 40 # Number of Nodes in y direction
 b = L*(1-o)/2 # Non Overlapping Side of the Rectangle
 
 # Meshes
-domain = Rectangle(Point(0.0, 0.0), Point(L,h))
-domain_left = domain and Rectangle(Point(0.0,0.0), Point(b, h))
-domain_center = domain and Rectangle(Point(b,0.0), Point(b+L*o,h))
-domain_right = domain and Rectangle(Point(b+L*o, 0.0), Point(L,h))
+domain = mshr.Rectangle(Point(0.0, 0.0), Point(L,h))
+domain_left = domain and mshr.Rectangle(Point(0.0,0.0), Point(b, h))
+domain_center = domain and mshr.Rectangle(Point(b,0.0), Point(b+L*o,h))
+domain_right = domain and mshr.Rectangle(Point(b+L*o, 0.0), Point(L,h))
 domain.set_subdomain(1, domain_left)
 domain.set_subdomain(2, domain_right)
 domain.set_subdomain(3, domain_center)
