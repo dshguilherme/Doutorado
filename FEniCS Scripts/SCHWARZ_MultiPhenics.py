@@ -43,8 +43,10 @@ class OnInterfaceRight(SubDomain):
 boundaries = MeshFunction('size_t', mesh, mesh.topology().dim()-1)
 on_boundary = OnBoundary()
 on_boundary.mark(boundaries,1)
-on_interface = OnInterface()
-on_interface.mark(boundaries,2)
+on_interface_left = OnInterfaceLeft()
+on_interface_right = OnInterfaceRight()
+on_interface_left.mark(boundaries,2)
+on_interface_right.mark(boundaries,2)
 
 class Left(SubDomain):
     def inside(self, x, on_boundary):
@@ -56,7 +58,7 @@ class Right(SubDomain):
 
 # Restrictions
 boundary_restriction = MeshRestriction(mesh, on_boundary)
-interace_restriction = MeshRestriction(mesh, on_interface)
+interface_restriction = MeshRestriction(mesh, on_interface)
 left = Left()
 left_restriction = MeshRestriction(mesh, left)
 right = Right()
@@ -79,7 +81,7 @@ ds = Measure('ds')(subdomain_data=boundaries)
 
 # VARIATIONAL FORMS #
 
-k = [[inner(grad(u1),grad(v1))*dx(1), 0                            , 0                              ],
+k = [[inner(grad(u1),grad(v1))*dx(1), 0                             , 0                             ],
      [0                             , inner(grad(u2),grad(v2))*dx(2), 0                             ],
      [0                             , 0                            , inner(grad(u3),grad(v3))*dx(3)]]
 m = [[u1*v1*dx(1)   , 0          , 0          ],
