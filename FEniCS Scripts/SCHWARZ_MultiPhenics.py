@@ -25,7 +25,7 @@ domain.set_subdomain(3, domain_center)
 mesh = mshr.generate_mesh(domain, 15)
 # SubDomains
 
-subdomains = MeshFunction('size_t', mesh, mesh.topology().dim(). mesh.domains())
+subdomains = MeshFunction('size_t', mesh, mesh.topology().dim(), mesh.domains())
 
 # Boundaries
 class OnBoundary(SubDomain):
