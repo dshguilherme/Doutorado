@@ -1,11 +1,4 @@
-'''
-The strategy of this approach will be:
-1. Compute the initial solution to the problem using T1, OT12, T2 for Omega1 and Omega2
-2. Calculate the \
-'''
 
-
-from numpy import isclose
 from dolfin import *
 from multiphenics import *
 import mshr
@@ -29,7 +22,7 @@ domain_right = domain and mshr.Rectangle(Point(b+L*o, 0.0), Point(L,h))
 domain.set_subdomain(1, domain_left)
 domain.set_subdomain(2, domain_right)
 domain.set_subdomain(3, domain_center)
-mesh = generate_mesh(domain, 15)
+mesh = mshr.generate_mesh(domain, 15)
 # SubDomains
 
 subdomains = MeshFunction('size_t', mesh, mesh.topology().dim(). mesh.domains())
