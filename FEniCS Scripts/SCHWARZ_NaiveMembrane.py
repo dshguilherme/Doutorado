@@ -1,5 +1,11 @@
-from dolfin import *
+from dolfin import (SubDomain, MeshFunction, refine, FunctionSpace, 
+                     TrialFunction, TestFunction, inner, grad, dx, 
+                     PETScMatrix, assemble, DirichletBC, SLEPcEigenSolver,
+                     Function, Measure, ds, Point, Constant, DOLFIN_EPS,
+                     near, between, sqrt, project, File, between)
 import mshr
+import numpy as np
+import matplotlib.pyplot as plt
 
 def schwarz_membrane_solver(L,h,o, mesh_resolution,number_of_refinements,
                              max_iterations, tolerance):
@@ -64,7 +70,7 @@ def schwarz_membrane_solver(L,h,o, mesh_resolution,number_of_refinements,
 
     # Initial Problem Assembly
     V = FunctionSpace(omega, "Lagrange", 1)
-    V1 = FunctionSpace(omega_left, "Lagrange", 1)
+    V1 = FunctionSpace(omega_left, "Lagrange", 2)
     V2 = FunctionSpace(omega_right, "Lagrange", 1)
 
     u = TrialFunction(V)
@@ -141,7 +147,10 @@ def schwarz_membrane_solver(L,h,o, mesh_resolution,number_of_refinements,
     print("Initial Step Frequency 1: ", sqrt(r1))
 
     uu1 = Function(V1)
-    uu1.vector()[:] = rx1
+    if (np.absolute(rx1.max()) < np.absolute(rx1.min())):
+        uu1.vector()[:] = -rx1
+    else:
+        uu1.vector()[:] = rx1
     vtkfile1 = File('SchwarzMembraneNaive/left.pvd')
     vtkfile1 << uu1
 
@@ -156,7 +165,10 @@ def schwarz_membrane_solver(L,h,o, mesh_resolution,number_of_refinements,
     print("Initial Step Frequency 2: ", sqrt(r2))
 
     uu2 = Function(V2)
-    uu2.vector()[:] = rx2
+    if (np.absolute(rx2.max()) < np.absolute(rx2.min())):
+        uu2.vector()[:] = -rx2
+    else:
+        uu2.vector()[:] = rx2
     vtkfile2 = File('SchwarzMembraneNaive/right.pvd')
     vtkfile2 << uu2
 
@@ -187,6 +199,7 @@ def schwarz_membrane_solver(L,h,o, mesh_resolution,number_of_refinements,
     L2_error = 9999
     smallest = 9999
     steps = 0
+    L2_array = np.zeros(2*max_iterations+1)
     while((iter < max_iterations)):
         # First Step: Do F1 = du/dn2, G1 = u2
          # Since this is a rectangular membrane, du/dn is just du/dx
@@ -203,6 +216,8 @@ def schwarz_membrane_solver(L,h,o, mesh_resolution,number_of_refinements,
             error = ((uu1-g1)**2)*dxo(1)
             initial_L2_left = sqrt(abs(assemble(error)))
             print("Initial L2 error: ", initial_L2_left)
+            L2_array[steps] = initial_L2_left
+
 
         # Step 2: Solve for u1
         ds = Measure('ds', subdomain_data=left_boundaries)
@@ -223,7 +238,10 @@ def schwarz_membrane_solver(L,h,o, mesh_resolution,number_of_refinements,
 #       print("Left Iteration " + str(iter) + " Frequency: ", sqrt(r1))
 
         uu1 = Function(V1)
-        uu1.vector()[:] = rx1
+        if (np.absolute(rx1.max()) < np.absolute(rx1.min())):
+            uu1.vector()[:] = -rx1
+        else:
+            uu1.vector()[:] = rx1
         vtkfile1 = File('SchwarzMembraneNaive/left' + str(iter) + '.pvd')
         vtkfile1 << uu1
         steps += 1
@@ -234,6 +252,7 @@ def schwarz_membrane_solver(L,h,o, mesh_resolution,number_of_refinements,
         L2_error_left = sqrt(abs(assemble(error)))
     #    print("L2 error: ", L2_error_left)
         L2_error = L2_error_left
+        L2_array[steps] = L2_error
         if (L2_error < tolerance):
             print("Process has converged on iteration ", iter, "on the left domain")
             print("Initial L2_error:", initial_L2_left)
@@ -272,7 +291,10 @@ def schwarz_membrane_solver(L,h,o, mesh_resolution,number_of_refinements,
 #        print("Right Iteration " + str(iter) + " Frequency: ", sqrt(r2))
 
         uu2 = Function(V2)
-        uu2.vector()[:] = rx2
+        if (np.absolute(rx2.max()) < np.absolute(rx2.min())):
+            uu2.vector()[:] = -rx2
+        else:
+            uu2.vector()[:] = rx2
         vtkfile2 = File('SchwarzMembraneNaive/right' + str(iter) +'.pvd')
         vtkfile2 << uu2
 
@@ -284,19 +306,26 @@ def schwarz_membrane_solver(L,h,o, mesh_resolution,number_of_refinements,
         L2_error_right = sqrt(abs(assemble(error)))
       #  print("L2 error: ", L2_error_right)
         L2_error = L2_error_right
+        L2_array[steps] = L2_error
         if (L2_error < tolerance):
             print("Process has converged on iteration ", iter, "on the right domain" )
-            print("Initial L2_error:", initial_L2_right)
+            print("Initial L2_error:", initial_L2_left)
             break
         if (smallest > L2_error):
             smallest = L2_error
-            stopping_step = step
+            stopping_step = steps
         iter += 1
     if (iter>= max_iterations):
         print("Process has stopped (max number of iterations)")
         print("Initial L2 error:", initial_L2_left)
-        print("L2 error after", stopping_step, "steps:", smallest)   
+        print("L2 error after", stopping_step, "steps:", smallest)
+    print(L2_array)
+    plt.plot(L2_array)
+    plt.ylabel('L2 error')
+    plt.xlabel('Step Number')
+    plt.show()
+    plt.savefig('L2 Error evolution.png')
 
-schwarz_membrane_solver(L=1.5, h=1.0, o=0.2, mesh_resolution=24,
-                         number_of_refinements=1, max_iterations=4,
+schwarz_membrane_solver(L=1.5, h=1.0, o=0.3, mesh_resolution=8,
+                         number_of_refinements=1, max_iterations=50,
                          tolerance=1e-3)
