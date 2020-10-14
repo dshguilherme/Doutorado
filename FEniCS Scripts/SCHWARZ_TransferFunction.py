@@ -249,7 +249,7 @@ L2_error, H1_error = schwarz_transfer_membrane(L=1.5, h=1, o=0.1,
                                                 mesh_resolution=10, 
                                                 number_of_refinements=1,
                                                 max_iterations=10,
-                                                polynomial_order=2)
+                                                polynomial_order=3)
 
 fig, ax = plt.subplots()
 plt.title('Error Norms',fontsize='x-large')
