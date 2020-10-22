@@ -1,5 +1,11 @@
-from dolfin import *
+from dolfin import (SubDomain, MeshFunction, refine, FunctionSpace, 
+                     TrialFunction, TestFunction, inner, grad, dx, 
+                     PETScMatrix, assemble, DirichletBC, SLEPcEigenSolver,
+                     Function, Measure, ds, Point, Constant, DOLFIN_EPS,
+                     near, between, sqrt, project, File, between)
 import mshr
+import numpy as np
+import matplotlib.pyplot as plt
 
 def schwarz_membrane_solver(L,h,o, mesh_resolution,number_of_refinements,
                              max_iterations, tolerance):
@@ -64,7 +70,7 @@ def schwarz_membrane_solver(L,h,o, mesh_resolution,number_of_refinements,
 
     # Initial Problem Assembly
     V = FunctionSpace(omega, "Lagrange", 1)
-    V1 = FunctionSpace(omega_left, "Lagrange", 1)
+    V1 = FunctionSpace(omega_left, "Lagrange", 2)
     V2 = FunctionSpace(omega_right, "Lagrange", 1)
 
     u = TrialFunction(V)
@@ -138,10 +144,13 @@ def schwarz_membrane_solver(L,h,o, mesh_resolution,number_of_refinements,
 
     solver1.solve(0)
     r1, c1, rx1, cx1 = solver1.get_eigenpair(0)
-    print("Left Frequency: ", sqrt(r1))
+    print("Initial Step Frequency 1: ", sqrt(r1))
 
     uu1 = Function(V1)
-    uu1.vector()[:] = rx1
+    if (np.absolute(rx1.max()) < np.absolute(rx1.min())):
+        uu1.vector()[:] = -rx1
+    else:
+        uu1.vector()[:] = rx1
     vtkfile1 = File('SchwarzMembraneNaive/left.pvd')
     vtkfile1 << uu1
 
@@ -153,10 +162,13 @@ def schwarz_membrane_solver(L,h,o, mesh_resolution,number_of_refinements,
 
     solver2.solve(0)
     r2, c2, rx2, cx2 = solver2.get_eigenpair(0)
-    print("Right Frequency: ", sqrt(r2))
+    print("Initial Step Frequency 2: ", sqrt(r2))
 
     uu2 = Function(V2)
-    uu2.vector()[:] = rx2
+    if (np.absolute(rx2.max()) < np.absolute(rx2.min())):
+        uu2.vector()[:] = -rx2
+    else:
+        uu2.vector()[:] = rx2
     vtkfile2 = File('SchwarzMembraneNaive/right.pvd')
     vtkfile2 << uu2
 
@@ -186,20 +198,31 @@ def schwarz_membrane_solver(L,h,o, mesh_resolution,number_of_refinements,
     iter = 0
     L2_error = 9999
     smallest = 9999
-    the_iter = 0
+    steps = 0
+    L2_array = np.zeros(2*max_iterations+1)
     while((iter < max_iterations)):
         # First Step: Do F1 = du/dn2, G1 = u2
+         # Since this is a rectangular membrane, du/dn is just du/dx
         uu2.set_allow_extrapolation(True)
-        f1 = project(uu2.dx(1) -uu2.dx(0), V=V1)
+        #f1 = project(uu2.dx(1) -uu2.dx(0), V=V1)
+        f1 = project(uu2.dx(0), V=V1)
         g1 = project(uu2, V=V1)
 
         u1 = TrialFunction(V1)
         v1 = TestFunction(V1)
+        # Check the initial L2 error norm:
+        if (iter == 0):
+            dxo = Measure('dx', subdomain_data=overlap_left)
+            error = ((uu1-g1)**2)*dxo(1)
+            initial_L2_left = sqrt(abs(assemble(error)))
+            print("Initial L2 error: ", initial_L2_left)
+            L2_array[steps] = initial_L2_left
+
 
         # Step 2: Solve for u1
         ds = Measure('ds', subdomain_data=left_boundaries)
 
-        k1 = inner(grad(u1),grad(v1))*dx -(1-g1)*(-u1.dx(0)-u1.dx(1))*v1*ds(1) -f1*u1*v1*ds(1)
+        k1 = inner(grad(u1),grad(v1))*dx -(1-g1)*u1.dx(0)*v1*ds(1) +f1*u1*v1*ds(1)
         K1 = PETScMatrix()
         assemble(k1, tensor=K1)
         bcs_left = DirichletBC(V1, Constant(0.), left_bcs)
@@ -212,39 +235,47 @@ def schwarz_membrane_solver(L,h,o, mesh_resolution,number_of_refinements,
 
         solver1.solve(0)
         r1, c1, rx1, cx1 = solver1.get_eigenpair(0)
-        print("Left Iteration " + str(iter) + " Frequency: ", sqrt(r1))
+#       print("Left Iteration " + str(iter) + " Frequency: ", sqrt(r1))
 
         uu1 = Function(V1)
-        uu1.vector()[:] = rx1
+        if (np.absolute(rx1.max()) < np.absolute(rx1.min())):
+            uu1.vector()[:] = -rx1
+        else:
+            uu1.vector()[:] = rx1
         vtkfile1 = File('SchwarzMembraneNaive/left' + str(iter) + '.pvd')
         vtkfile1 << uu1
-        
+        steps += 1
+
         # Step 2.5: L2 norm on the overlap
         dxo = Measure('dx', subdomain_data=overlap_left)
         error = ((uu1-g1)**2)*dxo(1)
         L2_error_left = sqrt(abs(assemble(error)))
-        print("L2 error: ", L2_error_left)
+    #    print("L2 error: ", L2_error_left)
         L2_error = L2_error_left
+        L2_array[steps] = L2_error
         if (L2_error < tolerance):
             print("Process has converged on iteration ", iter, "on the left domain")
+            print("Initial L2_error:", initial_L2_left)
             break
         if (smallest > L2_error):
             smallest = L2_error
-            the_iter = iter
+            stopping_step = steps
 
 
         # Step 3: Do F2 = du/dn1, G2 = u1
+         # Since this is a rectangular membrane, du/dn = du/dx
         uu1.set_allow_extrapolation(True)
-        f2 = project(uu1.dx(1)-uu1.dx(0), V=V2)
+    #    f2 = project(uu1.dx(1)-uu1.dx(0), V=V2)
+        f2 = project(uu1.dx(0), V=V2)
         g2 = project(uu1, V=V2)
 
         u2 = TrialFunction(V2)
         v2 = TestFunction(V2)
-
+    
         # Step 4: Solve for u2
         ds = Measure('ds', subdomain_data=right_boundaries)
 
-        k2 = inner(grad(u2),grad(v2))*dx -(1-g2)*(+u2.dx(0) -u2.dx(1))*v2*ds(1) -f2*u2*v2*ds(1)
+        k2 = inner(grad(u2),grad(v2))*dx -(1-g2)*u2.dx(0)*v2*ds(1) +f2*u2*v2*ds(1)
         K2 = PETScMatrix()
         assemble(k2, tensor=K2)
         bcs_right = DirichletBC(V2, Constant(0.), right_bcs)
@@ -257,33 +288,44 @@ def schwarz_membrane_solver(L,h,o, mesh_resolution,number_of_refinements,
 
         solver2.solve(0)
         r2, c2, rx2, cx2 = solver2.get_eigenpair(0)
-        print("Right Iteration " + str(iter) + " Frequency: ", sqrt(r2))
+#        print("Right Iteration " + str(iter) + " Frequency: ", sqrt(r2))
 
         uu2 = Function(V2)
-        uu2.vector()[:] = rx2
+        if (np.absolute(rx2.max()) < np.absolute(rx2.min())):
+            uu2.vector()[:] = -rx2
+        else:
+            uu2.vector()[:] = rx2
         vtkfile2 = File('SchwarzMembraneNaive/right' + str(iter) +'.pvd')
         vtkfile2 << uu2
+
+        steps += 1
 
         # Step 4.5: L2 norm on the overlap
         dxo = Measure('dx', subdomain_data=overlap_right)
         error = ((uu2-g2)**2)*dxo(1)
         L2_error_right = sqrt(abs(assemble(error)))
-        print("L2 error: ", L2_error_right)
+      #  print("L2 error: ", L2_error_right)
         L2_error = L2_error_right
+        L2_array[steps] = L2_error
         if (L2_error < tolerance):
             print("Process has converged on iteration ", iter, "on the right domain" )
+            print("Initial L2_error:", initial_L2_left)
             break
         if (smallest > L2_error):
             smallest = L2_error
-            the_iter = iter
+            stopping_step = steps
         iter += 1
     if (iter>= max_iterations):
-        print("Process has not converged to tolerance")
-        print("L2 error of last iteration:", L2_error)
-        print("Smallest L2 error:", smallest)
-        print("Achieved in iteration:", the_iter)
+        print("Process has stopped (max number of iterations)")
+        print("Initial L2 error:", initial_L2_left)
+        print("L2 error after", stopping_step, "steps:", smallest)
+    print(L2_array)
+    plt.plot(L2_array)
+    plt.ylabel('L2 error')
+    plt.xlabel('Step Number')
+    plt.show()
+    plt.savefig('L2 Error evolution.png')
 
-
-schwarz_membrane_solver(L=1.5, h=1.0, o=0.2, mesh_resolution=50,
-                         number_of_refinements=2, max_iterations=10,
+schwarz_membrane_solver(L=1.5, h=1.0, o=0.3, mesh_resolution=8,
+                         number_of_refinements=1, max_iterations=50,
                          tolerance=1e-3)
