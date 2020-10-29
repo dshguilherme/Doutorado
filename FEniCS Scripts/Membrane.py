@@ -1,11 +1,14 @@
+import os
+
 from dolfin import(FunctionSpace, TrialFunction, TestFunction, inner,
                    grad, dx, PETScMatrix, assemble, DirichletBC,
                    SLEPcEigenSolver, Function, Point, File, SubDomain,
                    near, Measure, MeshFunction, between, refine,
                    DOLFIN_EPS, FacetNormal, sqrt, lhs,
-                   PETScDMCollection, project, Constant, ds)
+                   PETScDMCollection, project, Constant, ds, plot, File)
 import mshr
 import numpy as np
+import matplotlib.pyplot as plt
 
 def standard_solver(K,M):
     solver = SLEPcEigenSolver(K,M)
@@ -31,11 +34,41 @@ class Membrane:
                                                mesh_resolution)
         
         self.p = polynomial_degree
-        self.V = FunctionSpace(self.mesh, "Lagrange", self.p)
-        self.V1 = FunctionSpace(self.mesh1, "Lagrange", self.p)
-        self.V2 = FunctionSpace(self.mesh2, "Lagrange", self.p)
         self.VO = FunctionSpace(self.overlap_mesh, "Lagrange", self.p)
-        
+
+        self.K, self.M, self.V = self.assemble_matrices(self.mesh)
+        self.K1, self.M1, self.V1 = self.assemble_matrices(self.mesh1)
+        self.K2, self.M2, self.V2 = self.assemble_matrices(self.mesh2)
+
+    def initial_solution(self, main_boundary, left_boundary,
+                         right_boundary, mode_number):
+        KK = self.K
+        bc = DirichletBC(self.V, Constant(0.), main_boundary)
+        bc.apply(KK)
+        solver = standard_solver(KK, self.M)
+        solver.solve(mode_number)
+
+        KK1 = self.K1
+        bc1 = DirichletBC(self.V1, Constant(0.), left_boundary)
+        bc1.apply(KK1)
+        solver1 = standard_solver(KK1, self.M1)
+        solver1.solve(mode_number)
+    
+        KK2 = self.K2
+        bc2 = DirichletBC(self.V2, Constant(0.), right_boundary)
+        bc2.apply(KK2)
+        solver2 = standard_solver(KK2, self.M2)
+        solver2.solve(mode_number)
+
+        r, _, rx, _ = solver.get_eigenpair(mode_number)
+        r1, _, rx1, _ = solver1.get_eigenpair(mode_number)
+        r2, _, rx2, _ = solver2.get_eigenpair(mode_number)
+
+        freqs = [r, r1, r2]
+        vecs = [rx, rx1, rx2]
+        return freqs, vecs
+
+
     def assemble_matrices(self, mesh):
         M = self.assemble_mass(mesh)
         K, V = self.assemble_stiffness(mesh)
@@ -119,8 +152,9 @@ class Membrane:
         
         L2 = assemble(error)
         H1 = L2 + assemble(semi_error)
+        SH = H1-L2
 
-        return L2, H1
+        return L2, H1, SH
     def build_transfer_matrices(self):
         V1 = self.V1
         V2 = self.V2
@@ -130,9 +164,9 @@ class Membrane:
         self.BO1 = PETScDMCollection.create_transfer_matrix(VO,V1)
         self.BO2 = PETScDMCollection.create_transfer_matrix(VO,V2)
 
-    def schwarz_algorithm(self, max_iterations, initial_u1, initial_u2,
-                          left_robin, left_dirichlet, right_robin,
-                          right_dirichlet, M1, M2):
+    def schwarz_algorithm(self, max_iterations, main_boundary, left_robin,
+                          left_dirichlet, right_robin,
+                          right_dirichlet, mode_number):
         self.build_transfer_matrices()
         B1 = self.B1
         BO1 = self.BO1
@@ -142,17 +176,42 @@ class Membrane:
         V1 = self.V1
         V2 = self.V2
         VO = self.VO
-        
-        rx1 = initial_u1.vector()
-        rx2 = initial_u2.vector()
+        freqs, vecs = self.initial_solution(main_boundary, left_dirichlet,
+                            right_dirichlet, mode_number)
+
+        r1 = freqs[1]
+        r2 = freqs[2]
+
+        M1 = self.M1
+        M2 = self.M2
+
+        rx1 = vecs[1]
+        if abs(rx1.max()) < abs(rx1.min()):
+            rx1 = -rx1
+        rx2 = vecs[2]
+        if abs(rx2.max()) < abs(rx2.min()):
+            rx2 = -rx2
 
         iter = 0
         L2_error = np.zeros((max_iterations+1,1))
         H1_error = np.zeros((max_iterations+1,1))
-        L2, H1 = self.overlap_error_norms(initial_u1, initial_u2)
+        SH_error = np.zeros((max_iterations+1,1))
+        r_left = np.zeros((max_iterations+1, 1))
+        r_right = np.zeros((max_iterations+1, 1))
+
+        u1 = Function(self.V1)
+        u1.vector()[:] = rx1
+        
+        u2 = Function(self.V2)
+        u2.vector()[:] = rx2
+
+        L2, H1 = self.overlap_error_norms(u1, u2)
 
         L2_error[iter] = L2
         H1_error[iter] = H1
+        SH_error[iter] = H1-L2
+        r_left[iter] = r1
+        r_right[iter] = r2
         while(iter < max_iterations):
             #Step 1: do f1 = du/dn2, g1 = u2
             uu2 = Function(V2)
@@ -215,6 +274,8 @@ class Membrane:
             boundary = right_robin
             K2, _ = self.assemble_lui_stiffness(g=g2, f=f2, mesh=self.mesh2,
                                                 robin_boundary=boundary)
+            bc2 = DirichletBC(V2, Constant(0.), right_dirichlet)
+            bc2.apply(K2)
             
             solver2 = standard_solver(K2, M2)
             solver2.solve(0)
@@ -229,81 +290,154 @@ class Membrane:
             semi_error = inner(grad(uu12 - uu21), grad(uu12 - uu21))*dx
             H1 = L2 + assemble(semi_error)
             iter += 1
+            r_left[iter] = r1
+            r_right[iter] = r2
             L2_error[iter] = L2
             H1_error[iter] = H1
-        return L2_error, H1_error, uu1, uu2
+            SH_error[iter] = H1-L2
+        return L2_error, H1_error, SH_error, uu1, uu2, r_left, r_right
 
 def membrane_iterator(insides, outsides, left_outsides, left_robin,
                         right_outsides, right_robin, num_of_iterations,
-                        membrane):
+                        membrane, mode_num):
 
     # Locally Refine the Meshes on the Overlap Region
     # for i in range(number_of_refinements):
     #     membrane.refine_meshes(insides)
 
-    # Matrices
-    K, M, V = membrane.assemble_matrices(membrane.mesh)
-    bc = DirichletBC(V, Constant(0.), outsides)
-    bc.apply(K)
-
-    K1, M1, V1 = membrane.assemble_matrices(membrane.mesh1)
-    bc1 = DirichletBC(V1, Constant(0.), left_outsides)
-    bc1.apply(K1)
-
-    K2, M2, V2 = membrane.assemble_matrices(membrane.mesh2)
-    bc2 = DirichletBC(V2, Constant(0.), right_outsides)
-    bc2.apply(K2)
-
     # Initial Solutions
-    solver = standard_solver(K,M)
-    solver.solve(0)
-    r, _, rx, _ = solver.get_eigenpair(0)
+    freqs, vecs = membrane.initial_solution(outsides,
+                             left_outsides, right_outsides, mode_num)
+    r = freqs[0]
+    r1 = freqs[1]
+    r2 = freqs[2]
     print("Target Frequency:", sqrt(r))
-
-    u = Function(V)
-    if (np.absolute(rx.max()) < np.absolute(rx.min())):
-            u.vector()[:] = -rx
-    else:
-            u.vector()[:] = rx
-
-    solver1 = standard_solver(K1,M1)
-    solver1.solve(0)
-    r1, _, rx1, _ =  solver1.get_eigenpair(0)
     print("Initial Left Domain Frequency:", sqrt(r1))
-
-    u1 = Function(V1)
-    if (np.absolute(rx1.max()) < np.absolute(rx1.min())):
-        u1.vector()[:] = -rx1
-    else:
-        u1.vector()[:] = rx1
-
-    solver2 = standard_solver(K2,M2)
-    solver2.solve(0)
-    r2, _, rx2, _ =  solver2.get_eigenpair(0)
     print("Initial Right Domain Frequency:", sqrt(r2))
-    u2 = Function(V2)
-    if (np.absolute(rx2.max()) < np.absolute(rx2.min())):
-        u2.vector()[:] = -rx2
-    else:
-        u2.vector()[:] = rx2
+
+    rx = vecs[0]
+    rx1 = vecs[1]
+    rx2 = vecs[2]
 
     # Transfer Matrices and Overlap Solution
     membrane.build_transfer_matrices()
 
-    # L2, H1 = membrane.overlap_error_norms(u1, u2)
-    LL, HH = membrane.big_error_norms(u, insides)
+    u = Function(membrane.V)
+    u.vector()[:] = rx
+    LL, HH, SS = membrane.big_error_norms(u, insides)
 
 
 
     # Schwarz Algorithm
-    L2, H1, u1, u2 = membrane.schwarz_algorithm(num_of_iterations, u1, u2, 
+    L2, H1, SH, u1, u2, r1, r2 = membrane.schwarz_algorithm(num_of_iterations, insides,
                                                 left_robin, left_outsides,
-                                                right_robin, right_outsides, M1, M2)
+                                                right_robin, right_outsides, 0)
 
     print('Initial L2 Relative Error:', np.sqrt(L2[0]/LL))
     print('Initial H1 Relative Error:', np.sqrt(H1[0]/HH))
+    print('Initial H1 Relative Semi-Norm Error:', np.sqrt(SH[0]/SS))
     for i in range(1,len(L2)):
         print('Iteration', i, 'L2 error:', np.sqrt(L2[i]/LL))
         print('Iteration', i, 'H1 error:', np.sqrt(H1[i]/HH))
+        print('Iteration', i, 'Semi H1 error:', np.sqrt(SH[i]/SS))
+    return np.sqrt(L2/LL), np.sqrt(H1/HH), np.sqrt(SH/SS), u1, u2, r1, r2
 
+def generate_relatory(filepath, membrane, L2, H1, SH1, u, u1, u2, r, r1, r2):
+    if not os.path.exists(filepath):
+        os.makedirs(filepath)
+    
+    file = File(filepath+'paraview.pvd')
+    file << u
+    file << u1
+    file << u2
 
+    fig, ax = plt.subplots()
+    ax.plot(L2, label='Relative L2 Error')
+    ax.plot(H1, label='Relative H1 Error')
+    ax.legend(loc='upper right')
+    ax.set_ylabel('Relative Error', fontsize=18)
+    ax.set_xlabel('Iteration Steps', fontsize=18)
+    ax.grid(b=True, ls='-.')
+    fig.tight_layout()
+
+    plt.savefig(filepath +'errornorms.png')
+    plt.close()
+
+    fig, ax = plt.subplots()
+    c = plot(u1)
+    fig.colorbar(c)
+    ax.set_title('Mode of Vibration on Left Domain')
+    plt.savefig(filepath +'u1.png')
+    plt.close()
+
+    fig, ax = plt.subplots()
+    c = plot(u2)
+    fig.colorbar(c)
+    ax.set_title('Mode of Vibration on Right Domain')
+    plt.savefig(filepath +'u2.png')
+    plt.close()
+
+    fig, ax = plt.subplots()
+    b = plot(u1)
+    c = plot(u2)
+    fig.colorbar(c)
+    ax.set_title('Juxtaposition of Left and Right Domains')
+    plt.savefig(filepath +'u1+u2.png')
+    plt.close()
+
+    fig, ax = plt.subplots()
+    ax.plot(np.sqrt(abs((r1))), label='Left Domain Frequency')
+    ax.plot((np.sqrt(abs(r2))), label='Right Domain Frequency')
+    ax.axhline(y=np.sqrt(r), label='Target Frequency', color='r')
+    ax.legend(loc='upper right')
+    ax.set_ylabel('Natural Frequency $\omega _n$')
+    ax.set_xlabel('Iteration Steps')
+    plt.savefig(filepath +'eigenvalues.png')
+    plt.close()
+
+    fig, ax = plt.subplots()
+    d = plot(u)
+    fig.colorbar(d)
+    ax.set_title('Reference Mode of Vibration')
+    plt.savefig(filepath+'target solution')
+    plt.close()
+
+    B1 = membrane.B1
+    B2 = membrane.B2
+    
+    V12 = membrane.VO
+    u12 = Function(V12)
+    u21 = Function(V12)
+
+    u12.vector()[:] = B1*u1.vector()
+    u21.vector()[:] = B2*u2.vector()
+    
+    fig, ax = plt.subplots()
+    e = plot((u12-u21))
+    fig.colorbar(e)
+    ax.set_title('Absolute Difference in the Overlap Region')
+    plt.savefig(filepath+'OverlapDiff.png')
+    plt.close()
+
+    fig, ax = plt.subplots()
+    plot(membrane.mesh)
+    ax.set_title('Main Domain Mesh')
+    plt.savefig(filepath+'mainmesh.png')
+    plt.close()
+
+    fig, ax = plt.subplots()
+    plot(membrane.mesh1)
+    ax.set_title('Left Domain Mesh')
+    plt.savefig(filepath+'leftmesh.png')
+    plt.close()
+
+    fig, ax = plt.subplots()
+    plot(membrane.mesh2)
+    ax.set_title('Right Domain Mesh')
+    plt.savefig(filepath+'rightmesh.png')
+    plt.close()
+
+    fig, ax = plt.subplots()
+    plot(membrane.overlap_mesh)
+    ax.set_title('Transfer/Overlap Domain Mesh')
+    plt.savefig(filepath+'overlapmesh.png')

@@ -8,33 +8,33 @@ import mshr
 import matplotlib.pyplot as plt
 import numpy as np
 
-from Membrane import (Membrane, standard_solver, membrane_iterator,
-                         generate_relatory)
+from Membrane import Membrane, standard_solver, membrane_iterator, generate_relatory
 
+center = Point(0., 0.)
+a = 131.32/2
+b = 85.09/2
+L = 20
+h = 50.80
+foot = 3.3
 
-h = 1.
-L = 1.
-c = 0.3
-r = h/4 
+foot_x = center.x() - a - foot
+foot_y = center.y() - 0.5*h 
+head_x = foot_x + L
+head_y = foot_y + h
 
-P1 = Point(0., h)
-P2 = Point(L+c, h+h)
-left_rectangle = mshr.Rectangle(P1, P2)
+domain1 = mshr.Rectangle(Point(foot_x, foot_y), Point(head_x, head_y))
+domain2 = mshr.Ellipse(center, a, b)
 
-C1 = Point(L+c, h+h-r)
-C2 = Point(L+c, h+r)
-
-minus_circle = mshr.Circle(C1, r)
-plus_circle = mshr.Circle(C2, r)
-
-domain1 = (left_rectangle +plus_circle) -minus_circle
-domain2 = mshr.Rectangle(Point(L, 0.), Point(L+L, h+h+h))
 domain = domain1+domain2
 
-membrane = Membrane(domain, domain1, domain2,
-                    mesh_resolution=12.7, polynomial_degree=1)
+membrane = Membrane(domain, domain1, domain2, 
+                mesh_resolution=25, polynomial_degree=1)
 
 # Define SubDomains
+
+frontier_x = -a*np.sqrt(1 - (h / (2*b) )**2 )
+frontier_y = h/2
+
 
 class OnBoundary(SubDomain):
     def inside(self, x, on_boundary):
@@ -42,53 +42,31 @@ class OnBoundary(SubDomain):
 
 class LeftDirichlet(SubDomain):
     def inside(self, x, on_boundary):
-        return on_boundary and between(x[0], [0, L])
+        return on_boundary and near(x[0], foot_x)
 
 class LeftRobin(SubDomain):
     def inside(self, x, on_boundary):
-        return on_boundary and (x[0] > L - DOLFIN_EPS)
+        return on_boundary and x[0] >= frontier_x - DOLFIN_EPS
 
 class RightDirichlet(SubDomain):
     def inside(self, x, on_boundary):
-        y_top = near(x[1], h+h+h)
-        y_bot = near(x[1], 0.)
-        y_cond = y_top or y_bot
-
-        x_right = near(x[0], L+L)
-        x_left = not between(x[0], [h, h+h])
-        x_cond = x_right or x_left
-
-        cond = y_cond or x_cond
-
-        return on_boundary and cond
+        return False
 
 class RightRobin(SubDomain):
     def inside(self, x, on_boundary):
-        return on_boundary and between(x[0], [h, h+h])
+        return on_boundary and x[0] <= frontier_x +DOLFIN_EPS
 
 class Overlap(SubDomain):
     def inside(self, x, on_boundary):
-        if between(x[1], [h, h+h]):
-            if between(x[1], [h, h+0.5*h]):
-                if between(x[0], [L, L+c]):
-                    return True
-                else:
-                    xx = (x[0] -C2.x())**2
-                    yy = (x[1] -C2.y())**2
-                    rr = r**2
-                    return (xx + yy) <= rr
-            else:
-                if between(x[0], [L, L+c-r]):
-                    return True
-                else:
-                    xx = (x[0] -C1.x())**2
-                    yy = (x[1] -C1.y())**2
-                    rr = r**2
-                    circ_cond = (xx +yy >= rr)
-                    return circ_cond and (x[0] < L+c +DOLFIN_EPS)
+        x_cond = between(x[0], [-a, frontier_x])
+        yy = x[1]**2
+        tmp = 1-(x[0]/a)**2
+        dd = b*tmp*b
+        y_cond = (yy <= dd)
+        return x_cond and y_cond
 
 insides = Overlap()
-outsides = OnBoundary()
+outsides = LeftDirichlet()
 left_outsides = LeftDirichlet()
 left_robin = LeftRobin()
 right_outsides = RightDirichlet()
@@ -110,5 +88,5 @@ L2, H1, SH1, u1, u2, r1, r2 = membrane_iterator(insides=insides,
                                 num_of_iterations=15,
                                 membrane=membrane, mode_num=0)
 
-generate_relatory('stepped/', membrane, L2, H1, SH1, u,
+generate_relatory('fin/', membrane, L2, H1, SH1, u,
                      u1, u2, r, r1, r2)

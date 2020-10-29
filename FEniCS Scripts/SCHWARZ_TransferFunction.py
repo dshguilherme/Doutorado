@@ -140,6 +140,7 @@ def schwarz_transfer_membrane(L, h, o, mesh_resolution,
         g1 = Function(V1)
         g1.vector()[:] = BB1*uu21.vector()
 
+<<<<<<< Updated upstream
         plt.figure()
         c = plot(g1)
         plt.colorbar(c)
@@ -148,6 +149,8 @@ def schwarz_transfer_membrane(L, h, o, mesh_resolution,
         plt.savefig('g1 step' +str(iter)+'.png')
         plt.close()
 
+=======
+>>>>>>> Stashed changes
         # Step 1.75: Project du2/dn2 -> u21 -> du1/dn1
         du2 = Function(V2)
         du2 = project(-uu2.dx(0), V2)
@@ -158,6 +161,7 @@ def schwarz_transfer_membrane(L, h, o, mesh_resolution,
         f1 = Function(V1)
         f1.vector()[:] = BB1*du21.vector()
 
+<<<<<<< Updated upstream
         plt.figure()
         c = plot(f1)
         plt.colorbar(c)
@@ -167,6 +171,8 @@ def schwarz_transfer_membrane(L, h, o, mesh_resolution,
         plt.close()
 
 
+=======
+>>>>>>> Stashed changes
         # Step 2 solve for u1
         boundary = domain1.right()
         K1, _ = domain1.assemble_lui_stiffness(g1, f1, boundary)
@@ -192,6 +198,7 @@ def schwarz_transfer_membrane(L, h, o, mesh_resolution,
         g2 = Function(V2)
         g2.vector()[:] = BB2*uu12.vector()
 
+<<<<<<< Updated upstream
         plt.figure()
         c = plot(g2)
         plt.colorbar(c)
@@ -201,6 +208,8 @@ def schwarz_transfer_membrane(L, h, o, mesh_resolution,
         plt.close()
 
 
+=======
+>>>>>>> Stashed changes
         du1 = Function(V1)
         du1 = project(-uu1.dx(0), V1)
 
@@ -210,6 +219,7 @@ def schwarz_transfer_membrane(L, h, o, mesh_resolution,
         f2 = Function(V2)
         f2.vector()[:] = BB2*du12.vector()
 
+<<<<<<< Updated upstream
         plt.figure()
         c = plot(f2)
         plt.colorbar(c)
@@ -219,6 +229,8 @@ def schwarz_transfer_membrane(L, h, o, mesh_resolution,
         plt.close()
 
 
+=======
+>>>>>>> Stashed changes
         # Step 4 solve for u2
         boundary = domain2.left()
         K2, _ = domain2.assemble_lui_stiffness(g2, f2, boundary)
@@ -231,6 +243,11 @@ def schwarz_transfer_membrane(L, h, o, mesh_resolution,
     # print("Omega 2 Frequency after step:", sqrt(r2))
 
         # Step 5 Calculate the L2 norm for convergence
+<<<<<<< Updated upstream
+=======
+        uu21.vector()[:] = B2*uu2.vector()
+        uu12.vector()[:] = B1*uu1.vector()
+>>>>>>> Stashed changes
         error = ((uu12-uu21)**2)*dx
         L2 = sqrt(abs(assemble(error)))
         print('Iteration ' +str(iter) +':')
