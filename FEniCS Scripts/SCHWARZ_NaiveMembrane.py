@@ -205,7 +205,7 @@ def schwarz_membrane_solver(L,h,o, mesh_resolution,number_of_refinements,
          # Since this is a rectangular membrane, du/dn is just du/dx
         uu2.set_allow_extrapolation(True)
         #f1 = project(uu2.dx(1) -uu2.dx(0), V=V1)
-        f1 = project(uu2.dx(0), V=V1)
+        f1 = project(uu2.dx(1), V=V1)
         g1 = project(uu2, V=V1)
 
         u1 = TrialFunction(V1)

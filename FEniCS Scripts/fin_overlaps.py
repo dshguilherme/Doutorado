@@ -29,14 +29,15 @@ domain2 = mshr.Ellipse(center, a, b)
 domain = domain1+domain2
 left = domain1 - domain2
 right = domain2 - domain1
-domain3 = mshr.Rectangle(Point(foot_x,foot_y),Point(head_x+4*L, head_y))
-domain = domain3+domain2
 L2norms = list()
 H1norms = list()
-for i in range(10):
-    size = 6*(i+1)
+areas = list()
+for i in range(20):
+    ll = (i+1)*L/5
+    domain3 = mshr.Rectangle(Point(foot_x,foot_y),Point(head_x+ll+L, head_y))
+    domain = domain3+domain2
     membrane = Membrane(domain, domain3, right, 
-                    mesh_resolution=size, polynomial_degree=1)
+                    mesh_resolution=30, polynomial_degree=1)
 
     # Define SubDomains
 
@@ -80,7 +81,7 @@ for i in range(10):
     right_robin = RightRobin()
 
     # Solution
-    path = 'fin/'+str(size)+'/'
+    #path = 'fin/'+str(size)+'/'
     freqs, vecs = membrane.initial_solution(outsides, left_outsides,
                                 right_outsides, mode_number=0)
     u = Function(membrane.V)
@@ -95,26 +96,39 @@ for i in range(10):
                                     num_of_iterations=1,
                                     membrane=membrane, mode_num=0)
 
-    generate_relatory(path, membrane, L2, H1, SH1, u,
-                        u1, u2, r, r1, r2, vecs)
-    L2norms.append(L2[-1]/(h*foot/2))
-    H1norms.append(H1[-1]/(h*foot/2))
+    #generate_relatory(path, membrane, L2, H1, SH1, u,
+    #                    u1, u2, r, r1, r2, vecs)
+    dx = Measure('dx',domain=membrane.overlap_mesh)
+    z = Constant(1.0)*dx
+    area = assemble(z)
+    
+    L2norms.append(L2[-1]/area)
+    H1norms.append(H1[-1]/area)
+    areas.append(area) 
+
+dx = Measure('dx',domain=membrane.mesh)
+z = Constant(1.0)*dx
+big_area = assemble(z)
+newAreas = []
+for x in areas:
+    newAreas.append(x/big_area)
+
 fig, ax = plt.subplots()
-ax.plot(L2norms, label='L2 norm after 10 iterations')
+ax.plot(newAreas,L2norms, label='L2 norm after 1 iteration')
 ax.legend(loc='upper right')
 ax.set_ylabel('Relative Error', fontsize=18)
-ax.set_xlabel('Element Size')
-ax.set_xticks([0, 1 , 2, 3, 4])#, 5, 6, 7, 8, 9])
-ax.set_xticklabels(["h", "h/2", "h/3", "h/4", "h/5"])#, "h/6", "h/7", "h/8", "h/9", "h/10"])
-plt.savefig('fin/L2norms.png')
+ax.set_xlabel('Overlapping Area')
+#ax.set_xticks([0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40])
+#ax.set_xticklabels(['5%', '10%', '15%', '20%', '25%', '30%', '35%', '40%'])
+plt.savefig('fin/overL2norms.png')
 plt.close()
 
 fig, ax = plt.subplots()
-ax.plot(H1norms, label='H1 norm after 10 iterations')
+ax.plot(newAreas,H1norms, label='H1 norm after 1 iteration')
 ax.legend(loc='upper right')
 ax.set_ylabel('Relative Error', fontsize=18)
-ax.set_xlabel('Element Size')
-ax.set_xticks([0, 1 , 2, 3, 4])#, 5, 6, 7, 8, 9])
-ax.set_xticklabels(["h", "h/2", "h/3", "h/4", "h/5"])#, "h/6", "h/7", "h/8", "h/9", "h/10"])
-plt.savefig('fin/H1norms.png')
+ax.set_xlabel('Overlapping Area')
+#ax.set_xticks([0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40])
+#ax.set_xticklabels(['5%', '10%', '15%', '20%', '25%', '30%', '35%', '40%'])
+plt.savefig('fin/overH1norms.png')
 plt.close()

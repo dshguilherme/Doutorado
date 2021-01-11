@@ -7,35 +7,43 @@ from dolfin import(SubDomain, MeshFunction, refine, FunctionSpace,
 import mshr
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
 from Membrane import (Membrane, standard_solver, membrane_iterator,
                          generate_relatory)
 
 
-h = 1.
-L = 1.
-c = 0.6
-r = h/4 
+rows = 9
+cols = 1
+L2error = np.ndarray((rows,cols))
+aaL2error = np.ndarray((rows,cols))
+H1error = np.ndarray((rows,cols))
+aaH1error = np.ndarray((rows,cols))
+area_array = np.ndarray((rows,cols))
+for i in range(rows):
 
-P1 = Point(0., h)
-P2 = Point(L+c, h+h)
-left_rectangle = mshr.Rectangle(P1, P2)
+    h = 1.
+    L = 1.
+    c = 0.1*(i+1)
+    r = h/4 
 
-C1 = Point(L+c, h+h-r)
-C2 = Point(L+c, h+r)
+    P1 = Point(0., h)
+    P2 = Point(L+c, h+h)
+    left_rectangle = mshr.Rectangle(P1, P2)
 
-minus_circle = mshr.Circle(C1, r)
-plus_circle = mshr.Circle(C2, r)
+    C1 = Point(L+c, h+h-r)
+    C2 = Point(L+c, h+r)
 
-domain1 = left_rectangle #+plus_circle) #-minus_circle
-domain2 = mshr.Rectangle(Point(L, 0.), Point(L+L, h+h+h))
-domain = domain1+domain2
-L2norms = list()
-H1norms = list()
-for i in range(6):
-    size = 7*(i+1)
+    minus_circle = mshr.Circle(C1, r)
+    plus_circle = mshr.Circle(C2, r)
+
+    domain1 = left_rectangle #+plus_circle) #-minus_circle
+    domain2 = mshr.Rectangle(Point(L, 0.), Point(L+L, h+h+h))
+    domain = domain1+domain2
+
+    size = 30
     membrane = Membrane(domain, domain1, domain2,
-                        mesh_resolution=size, polynomial_degree=1)
+                        mesh_resolution=size, polynomial_degree=1, adjust=1)
 
     # Define SubDomains
 
@@ -98,7 +106,7 @@ for i in range(6):
     right_robin = RightRobin()
 
     # Solution
-    path = 'T_shaped/'+str(size)+'/'
+    path = 'T_shaped/'+'areaadjusted/'+str(size)+'/'
     freqs, vecs = membrane.initial_solution(outsides, left_outsides,
                                 right_outsides, mode_number=0)
     u = Function(membrane.V)
@@ -110,29 +118,55 @@ for i in range(6):
                                     left_robin=left_robin,
                                     right_outsides=right_outsides,
                                     right_robin=right_robin,
-                                    num_of_iterations=15,
+                                    num_of_iterations=3,
                                     membrane=membrane, mode_num=0)
 
     generate_relatory(path, membrane, L2, H1, SH1, u,
                         u1, u2, r, r1, r2, vecs)
-    L2norms.append(L2[-1])
-    H1norms.append(H1[-1])
+    overlap_area = c*h
+    area_array[i] = overlap_area
+    L2error[i] = L2[-1]
+    aaL2error[i] = L2[-1]/overlap_area
+    H1error[i] = H1[-1]
+    aaH1error[i] = H1[-1]/overlap_area
+
+total_area = 3*L*h
+area_array = area_array/total_area
+print(area_array)
 fig, ax = plt.subplots()
-ax.plot(L2norms, label='L2 norm after 10 iterations')
+ax.plot(area_array,aaL2error, label='L2 norm after 3 iterations')
 ax.legend(loc='upper right')
-ax.set_ylabel('Relative Error', fontsize=18)
-ax.set_xlabel('Element Size')
-ax.set_xticks([0, 1 , 2, 3, 4])#, 5, 6, 7, 8, 9])
-ax.set_xticklabels(["h", "h/2", "h/3", "h/4", "h/5"])#, "h/6", "h/7", "h/8", "h/9", "h/10"])
-plt.savefig('T_shaped/L2norms.png')
+ax.set_ylabel('L2 Error Norm per Area', fontsize=18)
+ax.set_xlabel('Overlapping Area Percentage', fontsize=18)
+plt.grid(b=True)
+plt.savefig(path+'aaL2.png')
+plt.close()
+
+
+fig, ax = plt.subplots()
+ax.plot(area_array,aaH1error, label='H1 norm after 3 iterations')
+ax.legend(loc='upper right')
+ax.set_ylabel('H1 Error Norm per Area', fontsize=18)
+ax.set_xlabel('Overlapping Area Percentage', fontsize=18)
+plt.grid(b=True)
+plt.savefig(path+'aaH1.png')
 plt.close()
 
 fig, ax = plt.subplots()
-ax.plot(H1norms, label='H1 norm after 10 iterations')
+ax.plot(area_array,L2error, label='L2 norm after 3 iterations')
 ax.legend(loc='upper right')
-ax.set_ylabel('Relative Error', fontsize=18)
-ax.set_xlabel('Element Size')
-ax.set_xticks([0, 1 , 2, 3, 4])#, 5, 6, 7, 8, 9])
-ax.set_xticklabels(["h", "h/2", "h/3", "h/4", "h/5"])#, "h/6", "h/7", "h/8", "h/9", "h/10"])
-plt.savefig('T_shaped/H1norms.png')
+ax.set_ylabel('Total L2 Error Norm', fontsize=18)
+ax.set_xlabel('Overlapping Area Percentage', fontsize=18)
+plt.grid(b=True)
+plt.savefig(path+'L2.png')
+plt.close()
+
+
+fig, ax = plt.subplots()
+ax.plot(area_array,H1error, label='H1 norm after 3 iterations')
+ax.legend(loc='upper right')
+ax.set_ylabel('Total H1 Error Norm', fontsize=18)
+ax.set_xlabel('Overlapping Area Percentage', fontsize=18)
+plt.grid(b=True)
+plt.savefig(path+'H1.png')
 plt.close()

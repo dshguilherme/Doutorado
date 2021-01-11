@@ -7,35 +7,41 @@ from dolfin import(SubDomain, MeshFunction, refine, FunctionSpace,
 import mshr
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
-from Membrane import Membrane, standard_solver, membrane_iterator, generate_relatory
+from Membrane import (Membrane, standard_solver, membrane_iterator,
+                         generate_relatory)
 
-L1 = 1.
-h1 = 1.
-L2 = 1.
-h2 = 2.
-b = 1
 
-p1 = Point(0.,0.)
-p2 = Point(L1, h1)
-p3 = Point(L1+b, h1)
-p4 = Point(L1, 0.)
 
-domain1 = mshr.Rectangle(p1, p2) +mshr.Polygon([p4,p3,p2])
+rows = 9
+cols = 1
+L2error = np.ndarray((rows,cols))
+aaL2error = np.ndarray((rows,cols))
+H1error = np.ndarray((rows,cols))
+aaH1error = np.ndarray((rows,cols))
+area_array = np.ndarray((rows,cols))
+for i in range(rows):
+    L1 = 1.
+    h1 = 1.
+    L2 = 1.
+    h2 = 2.
 
-p5 = Point(L1, -(h2-h1))
-p6 = Point(L1+L2, h1)
+    p1 = Point(0.,0.)
+    p2 = Point(L1, h1)
+    p4 = Point(L1, 0.)
+    p5 = Point(L1, -(h2-h1))
+    p6 = Point(L1+L2, h1)
 
-domain2 = mshr.Rectangle(p5, p6)
-domain = domain1 + domain2
-L2norms = list()
-H1norms = list()
-for h in range(10):
-    size = 5*(h+1)
-    membrane = Membrane(domain, domain1, domain2, mesh_resolution=size,
-                        polynomial_degree=1)
+    domain2 = mshr.Rectangle(p5, p6)
+    b = 0.1*(i+1)
+    p3 = Point(L1+b, h1)
+    domain1 = mshr.Rectangle(p1, p2) +mshr.Polygon([p4,p3,p2])
+    domain = domain1 + domain2
 
-    # Define SubDomains
+    membrane = Membrane(domain, domain1, domain2, mesh_resolution=30,
+                        polynomial_degree=1, adjust=1)    
+
     class OnBoundary(SubDomain):
         def inside(self, x, on_boundary):
             return on_boundary
@@ -46,13 +52,6 @@ for h in range(10):
             x_left = near(x[0], 0.)
             y_bot = near(x[1], 0.)
             cond = (y_top or x_left) or (y_bot)
-            return on_boundary and cond
-
-    class LeftRobin(SubDomain):
-        def inside(self, x, on_boundary):
-            x_right = between(x[0], [L1, L1+b])
-            y_right = between(x[1], [0, h1])
-            cond = x_right and y_right
             return on_boundary and cond
 
     class RightDirichlet(SubDomain):
@@ -68,6 +67,12 @@ for h in range(10):
 
             return on_boundary and (y_clamp or x_clamp)
 
+    class LeftRobin(SubDomain):
+        def inside(self, x, on_boundary):
+            x_right = between(x[0], [L1, L1+b])
+            y_right = between(x[1], [0, h1])
+            cond = x_right and y_right
+            return on_boundary and cond
 
     class RightRobin(SubDomain):
         def inside(self, x, on_boundary):
@@ -88,12 +93,12 @@ for h in range(10):
                 return False
 
     insides = Overlap()
+    left_robin = LeftRobin()
+    right_robin = RightRobin()
     outsides = OnBoundary()
     left_outsides = LeftDirichlet()
-    left_robin = LeftRobin()
     right_outsides = RightDirichlet()
-    right_robin = RightRobin()
-    path = 'L_shaped/'+str(size)+'/'
+    path = 'L_shaped/areaadjusted/'+str(30)+'/'
     freqs, vecs = membrane.initial_solution(outsides, left_outsides,
                                 right_outsides, mode_number=0)
     u = Function(membrane.V)
@@ -105,30 +110,57 @@ for h in range(10):
                                     left_robin=left_robin,
                                     right_outsides=right_outsides,
                                     right_robin=right_robin,
-                                    num_of_iterations=4,
+                                    num_of_iterations=3,
                                     membrane=membrane, mode_num=0)
 
     generate_relatory(path, membrane, LL2, H1, SH1, u,
                         u1, u2, r, r1, r2, vecs)
-    L2norms.append(LL2[-1])
-    H1norms.append(H1[-1])
+    overlap_area = b/2
+    area_array[i] = b/2
+    L2error[i] = LL2[-1]
+    aaL2error[i] = LL2[-1]/(overlap_area)
+    H1error[i] = H1[-1]
+    aaH1error[i] = H1[-1]/(overlap_area)
+
+total_area = 2*L2 + L1
+area_array = area_array/total_area
+
+print(area_array)
 
 fig, ax = plt.subplots()
-ax.plot(L2norms, label='L2 norm after 10 iterations')
+ax.plot(area_array,aaL2error, label='L2 norm after 3 iterations')
 ax.legend(loc='upper right')
-ax.set_ylabel('Relative Error', fontsize=18)
-ax.set_xlabel('Element Size')
-ax.set_xticks([0, 1 , 2, 3, 4])#, 5, 6, 7, 8, 9])
-ax.set_xticklabels(["h", "h/2", "h/3", "h/4", "h/5"])#, "h/6", "h/7", "h/8", "h/9", "h/10"])
-plt.savefig('L_shaped/L2norms.png')
+ax.set_ylabel('L2 Error Norm per Area', fontsize=18)
+ax.set_xlabel('Overlapping Area Percentage', fontsize=18)
+plt.grid(b=True)
+plt.savefig(path+'aaL2.png')
+plt.close()
+
+
+fig, ax = plt.subplots()
+ax.plot(area_array,aaH1error, label='H1 norm after 3 iterations')
+ax.legend(loc='upper right')
+ax.set_ylabel('H1 Error Norm per Area', fontsize=18)
+ax.set_xlabel('Overlapping Area Percentage', fontsize=18)
+plt.grid(b=True)
+plt.savefig(path+'aaH1.png')
 plt.close()
 
 fig, ax = plt.subplots()
-ax.plot(H1norms, label='H1 norm after 10 iterations')
+ax.plot(area_array,L2error, label='L2 norm after 3 iterations')
 ax.legend(loc='upper right')
-ax.set_ylabel('Relative Error', fontsize=18)
-ax.set_xlabel('Element Size')
-ax.set_xticks([0, 1 , 2, 3, 4])#, 5, 6, 7, 8, 9])
-ax.set_xticklabels(["h", "h/2", "h/3", "h/4", "h/5"])#, "h/6", "h/7", "h/8", "h/9", "h/10"])
-plt.savefig('L_shaped/H1norms.png')
+ax.set_ylabel('Total L2 Error Norm', fontsize=18)
+ax.set_xlabel('Overlapping Area Percentage', fontsize=18)
+plt.grid(b=True)
+plt.savefig(path+'L2.png')
+plt.close()
+
+
+fig, ax = plt.subplots()
+ax.plot(area_array,H1error, label='H1 norm after 3 iterations')
+ax.legend(loc='upper right')
+ax.set_ylabel('Total H1 Error Norm', fontsize=18)
+ax.set_xlabel('Overlapping Area Percentage', fontsize=18)
+plt.grid(b=True)
+plt.savefig(path+'H1.png')
 plt.close()
