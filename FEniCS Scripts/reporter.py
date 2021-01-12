@@ -1,3 +1,5 @@
+import os
+
 from dolfin import(SubDomain, MeshFunction, refine, FunctionSpace, 
                      TrialFunction, TestFunction, inner, grad, dx, 
                      PETScMatrix, assemble, DirichletBC, SLEPcEigenSolver,
@@ -15,8 +17,7 @@ from Membrane import (Membrane, standard_solver, membrane_iterator,
 
 
 class Relatory:
-    def __init__(self, filepath, geometry, overlaps, domains1, domains2, boundaries):
-        self.type = geometry
+    def __init__(self, filepath, overlaps, domains1, domains2, boundaries):
         self.path = filepath
         self.overlaps = overlaps
         self.d1 = domains1
@@ -37,8 +38,8 @@ class Relatory:
         aaH1 = list()
         
         for idx in range(len(self.overlaps)):
-            left = d1[idx]
-            right = d2[idx]
+            left = self.d1[idx]
+            right = self.d2[idx]
             domain = left + right
             membrane = Membrane(domain, left, right, mesh_resolution=36, polynomial_degree=1,
                                  adjust=0.01)
@@ -57,11 +58,13 @@ class Relatory:
                                             num_of_iterations=2,
                                             membrane=membrane, mode_num=0)
             
-            LL2.append(L2)
-            aaL2.append(L2/self.overlaps[idx])
-            HH1.append(H1)
-            aaH1.append(H1/self.overlaps[idx])
+            LL2.append(L2[-1])
+            aaL2.append(L2[-1]/self.overlaps[idx])
+            HH1.append(H1[-1])
+            aaH1.append(H1[-1]/self.overlaps[idx])
 
+        if not os.path.exists(self.path):
+            os.makedirs(self.path)
         
         fig, ax = plt.subplots()
         ax.plot(self.overlaps, LL2, label='L2 norm after 2 iterations')
@@ -109,8 +112,8 @@ class Relatory:
 
         for k in constants:
             for idx in range(len(self.overlaps)):
-                left = d1[idx]
-                right = d2[idx]
+                left = self.d1[idx]
+                right = self.d2[idx]
                 domain = left + right
                 membrane = Membrane(domain, left, right, mesh_resolution=36, polynomial_degree=1,
                                     adjust=k)
@@ -139,6 +142,9 @@ class Relatory:
         Z2 = np.divide(HH1.T,X)
         Y = self.overlaps
         X,Y = np.meshgrid(np.log10(X),Y)
+        
+        if not os.path.exists(self.path):
+            os.makedirs(self.path)
 
         fig = plt.figure()
         ax = fig.gca(projection='3d')
