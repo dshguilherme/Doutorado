@@ -92,13 +92,13 @@ for i in range(rows):
         aaL2error[i,j] = L2[-1]/(1.5*o)
         H1error[i,j] = H1[-1]
         aaH1error[i,j] = H1[-1]/(1.5*o)
-        generate_relatory(path, membrane, L2,
+        generate_relatory(membrane, L2,
                              H1, SH1, u, u1, u2, r, r1, r2, vecs)
 
-np.save('rectangular/surfaces/small/gradL2.npy', L2error)
-np.save('rectangular/surfaces/small/gradaaL2.npy', aaL2error)
-np.save('rectangular/surfaces/small/gradH1.npy', H1error)
-np.save('rectangular/surfaces/small/gradaaH1.npy',aaH1error)
+# np.save('rectangular/surfaces/small/gradL2.npy', L2error)
+# np.save('rectangular/surfaces/small/gradaaL2.npy', aaL2error)
+# np.save('rectangular/surfaces/small/gradH1.npy', H1error)
+# np.save('rectangular/surfaces/small/gradaaH1.npy',aaH1error)
 
 # fig, ax = plt.subplots()
 # ax.plot(add.T,aaL2error, label='L2 norm after 2 iterations')

@@ -1,5 +1,3 @@
-import os
-
 from dolfin import(SubDomain, MeshFunction, refine, FunctionSpace, 
                      TrialFunction, TestFunction, inner, grad, dx, 
                      PETScMatrix, assemble, DirichletBC, SLEPcEigenSolver,
@@ -17,17 +15,9 @@ from Membrane import (Membrane, standard_solver, membrane_iterator,
 
 
 class Relatory:
-    def __init__(self, filepath, overlaps, domains1, domains2, boundaries):
-        self.path = filepath
+    def __init__(self, overlaps, membranes):
         self.overlaps = overlaps
-        self.d1 = domains1
-        self.d2 = domains2
-        self.insides = boundaries[0]
-        self.outsides = boundaries[1]
-        self.left_outsides = boundaries[2]
-        self.left_robin = boundaries[3]
-        self.right_outsides = boundaries[4]
-        self.right_robin = boundaries[5]
+        self.membranes = membranes
 
     
     def generate_overlap_error_graphs(self):
@@ -38,23 +28,8 @@ class Relatory:
         aaH1 = list()
         
         for idx in range(len(self.overlaps)):
-            left = self.d1[idx]
-            right = self.d2[idx]
-            domain = left + right
-            membrane = Membrane(domain, left, right, mesh_resolution=36, polynomial_degree=1,
-                                 adjust=0.01)
-            outsides = self.outsides[idx]
-            insides = self.insides[idx]
-            left_outsides = self.left_outsides[idx]
-            left_robin = self.left_robin[idx]
-            right_outsides = self.right_outsides[idx]
-            right_robin = self.right_robin[idx]
-            L2, H1, _, _, _, _, _ = membrane_iterator(insides=insides, 
-                                            outsides=outsides,
-                                            left_outsides=left_outsides,
-                                            left_robin=left_robin,
-                                            right_outsides=right_outsides,
-                                            right_robin=right_robin,
+            membrane = self.membranes[idx]
+            L2, H1, _, _, _, _, _ = membrane_iterator(
                                             num_of_iterations=2,
                                             membrane=membrane, mode_num=0)
             
@@ -63,16 +38,16 @@ class Relatory:
             HH1.append(H1[-1])
             aaH1.append(H1[-1]/self.overlaps[idx])
 
-        if not os.path.exists(self.path):
-            os.makedirs(self.path)
-        
+       
         fig, ax = plt.subplots()
         ax.plot(self.overlaps, LL2, label='L2 norm after 2 iterations')
         ax.legend(loc='upper right')
         ax.set_ylabel('L2 Error Norm', fontsize = 18)
         ax.set_xlabel('Overlap Area Percentage', fontsize = 18)
         plt.grid(b=True)
-        plt.savefig(self.path +'l2byOA.png')
+        plt.savefig('l2byOA.png')
+        plt.cla()
+        plt.clf()
         plt.close()
 
         fig, ax = plt.subplots()
@@ -81,7 +56,9 @@ class Relatory:
         ax.set_ylabel('H1 Error Norm', fontsize = 18)
         ax.set_xlabel('Overlap Area Percentage', fontsize = 18)
         plt.grid(b=True)
-        plt.savefig(self.path +'h1byOA.png')
+        plt.savefig('h1byOA.png')
+        plt.cla()
+        plt.clf()
         plt.close()
 
         fig, ax = plt.subplots()
@@ -90,7 +67,9 @@ class Relatory:
         ax.set_ylabel('L2 Error Norm by Area', fontsize = 18)
         ax.set_xlabel('Overlap Area Percentage', fontsize = 18)
         plt.grid(b=True)
-        plt.savefig(self.path +'aal2byOA.png')
+        plt.savefig('aal2byOA.png')
+        plt.cla()
+        plt.clf()
         plt.close()
 
         fig, ax = plt.subplots()
@@ -99,7 +78,9 @@ class Relatory:
         ax.set_ylabel('H1 Error Norm by Area', fontsize = 18)
         ax.set_xlabel('Overlap Area Percentage', fontsize = 18)
         plt.grid(b=True)
-        plt.savefig(self.path +'aah1byOA.png')
+        plt.savefig('aah1byOA.png')
+        plt.cla()
+        plt.clf()
         plt.close()
     
     def generate_overlap_k_surface(self):
@@ -114,8 +95,8 @@ class Relatory:
             for idx in range(len(self.overlaps)):
                 left = self.d1[idx]
                 right = self.d2[idx]
-                domain = left + right
-                membrane = Membrane(domain, left, right, mesh_resolution=36, polynomial_degree=1,
+                domain = self.d
+                membrane = Membrane(domain, left, right, mesh_resolution=30, polynomial_degree=1,
                                     adjust=k)
                 outsides = self.outsides[idx]
                 insides = self.insides[idx]
@@ -143,9 +124,6 @@ class Relatory:
         Y = self.overlaps
         X,Y = np.meshgrid(np.log10(X),Y)
         
-        if not os.path.exists(self.path):
-            os.makedirs(self.path)
-
         fig = plt.figure()
         ax = fig.gca(projection='3d')
         surf = ax.plot_surface(X,Y,Z1)
@@ -153,7 +131,7 @@ class Relatory:
         ax.set_ylabel('Overlapping Area')
         ax.set_xlabel('log(k)')
         ax.set_zlabel(r'$k^{-1} * Error Norm')
-        plt.savefig(self.path +'l2surface.png')
+        plt.savefig('l2surface.png')
         plt.close()
 
         fig = plt.figure()
@@ -163,39 +141,19 @@ class Relatory:
         ax.set_ylabel('Overlapping Area')
         ax.set_xlabel('log(k)')
         ax.set_zlabel(r'$k^{-1} * Error Norm')
-        plt.savefig(self.path +'h1surface.png')
+        plt.savefig('h1surface.png')
         plt.close()
 
     def schwarz_iterations(self):
-        k = 0.01
         idx = np.argmin(self.overlaps)
-        left = self.d1[idx]
-        right = self.d2[idx]
-        domain = left+right
-        membrane = Membrane(domain, left, right, mesh_resolution=36, polynomial_degree=1,
-                                    adjust=k)
-        outsides = self.outsides[idx]
-        insides = self.insides[idx]
-        left_outsides = self.left_outsides[idx]
-        left_robin = self.left_robin[idx]
-        right_outsides = self.right_outsides[idx]
-        right_robin = self.right_robin[idx]
-        L2, H1, SH1, u1, u2, r1, r2 = membrane_iterator(insides=insides, 
-                                        outsides=outsides,
-                                        left_outsides=left_outsides,
-                                        left_robin=left_robin,
-                                        right_outsides=right_outsides,
-                                        right_robin=right_robin,
-                                        num_of_iterations=2,
-                                        membrane=membrane, mode_num=0)        
-        freqs, vecs = membrane.initial_solution(outsides, left_outsides,
-                                right_outsides, mode_number=0)
+        membrane = self.membranes[idx]
+        freqs, vecs = membrane.initial_solution(mode_number=0)
         u = Function(membrane.V)
         u.vector()[:] = vecs[0]
-        r = freqs[0]
-        generate_relatory(self.path+'/bestsample/', membrane, L2, H1, SH1, u,
-                            u1, u2, r, r1, r2, vecs)
-
+        r = freqs[0]        
+        L2, H1, SH1, u1, u2, r1, r2 = membrane_iterator(num_of_iterations=10,
+                                        membrane=membrane, mode_num=0)        
+        generate_relatory(membrane, L2, H1, SH1, u, u1, u2, r, r1, r2, vecs)
 
 
 
