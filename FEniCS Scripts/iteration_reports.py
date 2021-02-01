@@ -17,8 +17,8 @@ for size in mesh_sizes[2:len(mesh_sizes)]:
     hh = rec_shaped.mesh.hmax()
     tmp = (hx+hh)/2
     hmin.append(tmp)                      
-    ll2.append(L2[-1]/(6))
-    hh1.append(H1[-1]/(6))
+    ll2.append(L2[-1])
+    hh1.append(H1[-1])
 
 fig, ax = plt.subplots()
 ax.plot(hmin, ll2, label='L2 norm after 2 iterations')
